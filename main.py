@@ -142,7 +142,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/system - Info del sistema\n"
         "/about - Info del bot\n"
         "/help - Muestra esta ayuda\n"
-        "/gitpull Pullea Automaticamente los cambios en el Bot BanksRate"
+        "/gitpull Pullea Automaticamente los cambios en el Bot BanksRate\n"
+        "/startbot → Inicia el bot que corre en sesión 0 llamado bot.\n"
+        "/stopbot → Detiene el bot que corre en sesión 0."
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
@@ -198,6 +200,26 @@ async def system(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("```")
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+@restricted
+async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inicia el bot en sesión 0 llamado 'bot'."""
+    cmd = "sudo pm2 start bot"
+    result = await run_cmd(cmd)
+    await update.message.reply_text(
+        f"🟢 Inicio de bot:\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
+    )
+
+
+@restricted
+async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Detiene el bot en sesión 0 llamado 'bot'."""
+    cmd = "sudo pm2 stop bot"
+    result = await run_cmd(cmd)
+    await update.message.reply_text(
+        f"🔴 Detención de bot:\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
+    )
 
 
 @restricted
@@ -292,6 +314,8 @@ def main():
     app.add_handler(CommandHandler("logs", logs))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("gitpull", git_pull_repo))
+    app.add_handler(CommandHandler("startbot", start_bot))
+    app.add_handler(CommandHandler("stopbot", stop_bot))
 
     print("✅ Bot admin corriendo. Esperando comandos...")
     try:
