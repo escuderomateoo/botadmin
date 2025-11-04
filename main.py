@@ -141,7 +141,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/logs <nombre> [lineas] - Ver logs\n"
         "/system - Info del sistema\n"
         "/about - Info del bot\n"
-        "/help - Muestra esta ayuda"
+        "/help - Muestra esta ayuda\n"
         "/gitpull Pullea Automaticamente los cambios en el Bot BanksRate"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
@@ -167,7 +167,7 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Versión: `1.1`",
         "• Lenguaje: `Python 3`",
         "• Framework: `python-telegram-bot`",
-        "• Autor: DAMIAN, AGUSTIN, MATEO",
+        "• Autores: Escudero Mateo, Agustin Stella, Damian Melgarejo",
         "",
         "💡 Este bot se conecta con *PM2* para:",
         "  - Ver el estado de los procesos",
