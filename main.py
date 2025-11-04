@@ -135,6 +135,7 @@ async def monitor_pm2(application):
 
 # --- MAIN ---
 async def main():
+    # ... (cuerpo de la función main_async renombrado a main)
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("status", status))
@@ -142,11 +143,19 @@ async def main():
     app.add_handler(CommandHandler("logs", logs))
     app.add_handler(CommandHandler("help", help_cmd))
 
+    # El monitor se inicia como una tarea del event loop principal
+    # que está a punto de ejecutarse con app.run_polling()
     asyncio.create_task(monitor_pm2(app))
 
     print("✅ Bot admin corriendo. Esperando comandos...")
-    await app.run_polling()
+    # run_polling() gestionará el event loop de forma correcta
+    await app.run_polling(
+        allowed_updates=list(constants.UpdateType), drop_pending_updates=True
+    )
 
 
+# Bloque de ejecución principal
 if __name__ == "__main__":
+    # asyncio.run() se encarga de iniciar y cerrar el event loop
+    # y ejecutar la corrutina 'main' hasta que termine.
     asyncio.run(main())
