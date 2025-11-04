@@ -142,6 +142,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/system - Info del sistema\n"
         "/about - Info del bot\n"
         "/help - Muestra esta ayuda"
+        "/gitpull Pullea Automaticamente los cambios en el Bot BanksRate"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
@@ -166,7 +167,7 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Versión: `1.1`",
         "• Lenguaje: `Python 3`",
         "• Framework: `python-telegram-bot`",
-        "• Autor: `TuNombre / @tuusuario`",
+        "• Autor: DAMIAN, AGUSTIN, MATEO",
         "",
         "💡 Este bot se conecta con *PM2* para:",
         "  - Ver el estado de los procesos",
@@ -197,6 +198,29 @@ async def system(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("```")
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+@restricted
+async def git_pull_repo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    repo_path = "/root/proyectofinalsic/"
+
+    if not os.path.isdir(repo_path):
+        await update.message.reply_text(f"🚫 No existe la carpeta: {repo_path}")
+        return
+
+    await update.message.reply_text(f"⏳ Actualizando repo en `{repo_path}`...")
+
+    # Ejecutar git pull en esa carpeta
+    git_result = await run_cmd(f"cd {repo_path} && git pull")
+
+    # Limitar mensaje de Telegram si es muy largo
+    if len(git_result) > 4000:
+        git_result = git_result[:3900] + "\n... (resultado truncado)"
+
+    await update.message.reply_text(
+        f"📦 Resultado de git pull en `{repo_path}`:\n```\n{git_result}\n```",
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 # --- MONITOREO AUTOMÁTICO ---
@@ -267,6 +291,7 @@ def main():
     app.add_handler(CommandHandler("restart", restart))
     app.add_handler(CommandHandler("logs", logs))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("gitpull", git_pull_repo))
 
     print("✅ Bot admin corriendo. Esperando comandos...")
     try:
