@@ -61,11 +61,55 @@ def restricted(func):
 # --- COMANDOS DE ADMINISTRACIÓN ---
 @restricted
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = await run_cmd("pm2 list")
-    await update.message.reply_text(
-        f"📊 *PM2 STATUS:*\n```\n{result}\n```",
-        parse_mode=ParseMode.MARKDOWN,
-    )
+    # 1. Obtenemos la salida en formato JSON
+    json_result = await run_cmd("pm2 list --json")
+
+    try:
+        data = json.loads(json_result)
+    except json.JSONDecodeError:
+        # Esto ocurre si pm2 list --json falla (ej. pm2 no está instalado o no hay procesos)
+        await update.message.reply_text(
+            f"❌ *Error al obtener el estado de PM2:*\n```\n{json_result}\n```",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # 2. Construimos la tabla
+    lines = ["📊 *PM2 STATUS:*"]
+
+    if not data:
+        lines.append("No hay procesos PM2 activos.")
+    else:
+        # Encabezado
+        lines.append("```")
+        lines.append(" ID | Nombre      | CPU  | MEMORIA | Status")
+        lines.append("----+-------------+------+---------+---------")
+
+        for p in data:
+            name = p["name"][:11].ljust(11)  # Limita y rellena el nombre
+            pm_id = str(p["pm_id"]).ljust(2)
+            cpu = str(p["monit"]["cpu"]).rjust(3) + "%"
+            memory = round(p["monit"]["memory"] / (1024 * 1024), 1)  # MB
+
+            # Formato del estado con emojis
+            status_text = p["pm2_env"]["status"]
+            if status_text == "online":
+                status_emoji = "🟢"
+            elif status_text == "stopped":
+                status_emoji = "🛑"
+            elif status_text == "errored":
+                status_emoji = "🔴"
+            else:
+                status_emoji = "🟡"
+
+            status_line = f"{pm_id} | {name} | {cpu} | {str(memory).rjust(5)}M | {status_emoji} {status_text}"
+            lines.append(status_line)
+
+        lines.append("```")
+
+    final_message = "\n".join(lines)
+
+    await update.message.reply_text(final_message, parse_mode=ParseMode.MARKDOWN)
 
 
 @restricted
