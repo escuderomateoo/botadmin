@@ -2,6 +2,9 @@ import asyncio
 import subprocess
 import json
 import os
+import psutil
+import shutil
+import time
 from dotenv import load_dotenv
 from telegram import Update, constants
 from telegram.constants import ParseMode
@@ -14,9 +17,8 @@ TOKEN = os.getenv("BOT_TOKEN")
 ALLOWED_USERS = [int(x) for x in os.getenv("ALLOWED_USERS", "").split(",") if x]
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))
 
+
 # --- FUNCIONES DE SISTEMA ASÍNCRONAS ---
-
-
 def run_cmd_sync(cmd: str) -> str:
     """Ejecuta un comando en bash y devuelve su salida (sincrónico)."""
     try:
@@ -33,14 +35,14 @@ async def run_cmd(cmd: str) -> str:
     return await asyncio.to_thread(run_cmd_sync, cmd)
 
 
-async def get_pm2_status() -> dict:
-    """Obtiene el estado PM2 ejecutando run_cmd de forma asíncrona."""
+async def get_pm2_status() -> list:
+    """Obtiene la lista de procesos PM2 en formato JSON."""
     try:
         output = await run_cmd("pm2 jlist")
-        data = json.loads(output)
-        return {p["name"]: p["pm2_env"]["status"] for p in data}
-    except Exception:
-        return {}
+        return json.loads(output)
+    except Exception as e:
+        print(f"[ERROR] No se pudo obtener estado de PM2: {e}")
+        return []
 
 
 # --- DECORADOR DE SEGURIDAD ---
@@ -58,77 +60,45 @@ def restricted(func):
     return wrapper
 
 
-# --- COMANDOS DE ADMINISTRACIÓN ---
-@restricted
-# --- COMANDOS (MODIFICACIÓN DE STATUS) ---
+# --- COMANDOS PRINCIPALES ---
 @restricted
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 1. Obtenemos el diccionario (JSON ya cargado) usando get_pm2_status
+    """Muestra el estado de los procesos PM2."""
     data = await get_pm2_status()
-
-    # 2. Construimos la tabla
     lines = ["📊 *PM2 STATUS:*"]
 
     if not data:
-        # Si get_pm2_status retorna un diccionario vacío {}
         lines.append("No hay procesos PM2 activos o PM2 no está disponible.")
     else:
-        # Encabezado
         lines.append("```")
-        lines.append(" ID | Nombre      | CPU  | MEMORIA | Status")
-        lines.append("----+-------------+------+---------+---------")
+        lines.append(" ID | Nombre       | CPU  | MEMORIA | Estado")
+        lines.append("----+--------------+------+----------+---------")
 
-        # Procesamos cada proceso
-        for name, status_text in data.items():
-            # Dado que get_pm2_status solo devuelve nombre y status, necesitamos PM2 JLIST completo
-            # para CPU y Memoria. Vamos a obtenerlo de nuevo, de forma más segura.
+        for p in data:
+            name = p["name"][:12].ljust(12)
+            pm_id = str(p["pm_id"]).ljust(2)
+            cpu = str(p["monit"].get("cpu", 0)).rjust(3) + "%"
+            mem_mb = round(p["monit"].get("memory", 0) / (1024 * 1024), 1)
+            status_text = p["pm2_env"]["status"]
 
-            # --- Mejoramos la obtención de datos completos para un mejor formato ---
-            full_json_result = await run_cmd("pm2 jlist")
+            if status_text == "online":
+                emoji = "🟢"
+            elif status_text == "stopped":
+                emoji = "🛑"
+            elif status_text == "errored":
+                emoji = "🔴"
+            else:
+                emoji = "🟡"
 
-            try:
-                full_data = json.loads(full_json_result)
-            except json.JSONDecodeError:
-                # Si falla, usamos la salida de pm2 list sin formato (como alternativa)
-                list_result = await run_cmd("pm2 list")
-                await update.message.reply_text(
-                    f"📊 *PM2 STATUS (Formato básico):*\n```\n{list_result}\n```",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-                return
+            lines.append(
+                f" {pm_id} | {name} | {cpu} | {str(mem_mb).rjust(6)}M | {emoji} {status_text}"
+            )
+        lines.append("```")
 
-            # Si full_data es correcto, iteramos sobre él para obtener todos los detalles
-            for p in full_data:
-                name = p["name"][:11].ljust(11)  # Limita y rellena el nombre
-                pm_id = str(p["pm_id"]).ljust(2)
-
-                # Datos de monitoreo:
-                cpu = str(p["monit"].get("cpu", 0)).rjust(3) + "%"
-                # Convertir Bytes a MB
-                memory_bytes = p["monit"].get("memory", 0)
-                memory = round(memory_bytes / (1024 * 1024), 1)
-
-                status_text = p["pm2_env"]["status"]
-
-                # Formato del estado con emojis
-                if status_text == "online":
-                    status_emoji = "🟢"
-                elif status_text == "stopped":
-                    status_emoji = "🛑"
-                elif status_text == "errored":
-                    status_emoji = "🔴"
-                else:
-                    status_emoji = "🟡"
-
-                status_line = f"{pm_id} | {name} | {cpu} | {str(memory).rjust(5)}M | {status_emoji} {status_text}"
-                lines.append(status_line)
-
-            lines.append("```")
-            break  # Terminamos el bucle si ya procesamos la data
-
-    final_message = "\n".join(lines)
-
-    await update.message.reply_text(final_message, parse_mode=ParseMode.MARKDOWN)
+    msg = "\n".join(lines)
+    if len(msg) > 4000:
+        msg = msg[:3900] + "\n... (salida truncada por límite de Telegram)"
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
 
 @restricted
@@ -162,15 +132,71 @@ async def logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@restricted
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "🤖 *Comandos disponibles:*\n\n"
         "/status - Ver procesos PM2\n"
         "/restart <nombre> - Reiniciar proceso\n"
         "/logs <nombre> [lineas] - Ver logs\n"
+        "/system - Info del sistema\n"
+        "/about - Info del bot\n"
         "/help - Muestra esta ayuda"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
+
+# --- NUEVOS COMANDOS ---
+@restricted
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "👋 *Bienvenido al Bot de Administración PM2*\n\n"
+        "Este bot te permite monitorear y controlar procesos en tu servidor.\n"
+        "Usá /help para ver todos los comandos disponibles.\n\n"
+        "⚙️ _Desarrollado para admins que aman el control._"
+    )
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
+
+@restricted
+async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lines = [
+        "🤖 *PM2 Admin Bot*",
+        "",
+        "• Versión: `1.1`",
+        "• Lenguaje: `Python 3`",
+        "• Framework: `python-telegram-bot`",
+        "• Autor: `TuNombre / @tuusuario`",
+        "",
+        "💡 Este bot se conecta con *PM2* para:",
+        "  - Ver el estado de los procesos",
+        "  - Reiniciar servicios",
+        "  - Ver logs en tiempo real",
+        "  - Monitorear cambios automáticamente",
+        "",
+        "🚀 _Administra tus procesos con estilo._",
+    ]
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+
+@restricted
+async def system(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra información general del sistema."""
+    cpu = psutil.cpu_percent(interval=1)
+    mem = psutil.virtual_memory()
+    disk = shutil.disk_usage("/")
+    uptime = time.time() - psutil.boot_time()
+
+    lines = ["🖥 *System Info:*", "```"]
+    lines.append(f"CPU:      {cpu}%")
+    lines.append(f"RAM:      {mem.percent}% ({mem.used // (1024 ** 2)} MB usados)")
+    lines.append(
+        f"DISK:     {disk.used // (1024 ** 3)} / {disk.total // (1024 ** 3)} GB"
+    )
+    lines.append(f"UPTIME:   {int(uptime // 3600)}h {int((uptime % 3600) // 60)}m")
+    lines.append("```")
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 # --- MONITOREO AUTOMÁTICO ---
@@ -181,43 +207,52 @@ async def monitor_pm2(application):
         return
 
     chat_id = ALLOWED_USERS[0]
-    last_status = await get_pm2_status()
+    last_status = {p["name"]: p["pm2_env"]["status"] for p in await get_pm2_status()}
 
-    while True:
-        await asyncio.sleep(CHECK_INTERVAL)
-        current_status = await get_pm2_status()
+    try:
+        while True:
+            await asyncio.sleep(CHECK_INTERVAL)
+            current_data = await get_pm2_status()
+            current_status = {p["name"]: p["pm2_env"]["status"] for p in current_data}
 
-        # Cambios de estado
-        for name, status in current_status.items():
-            old_status = last_status.get(name)
-            if old_status != status:
-                msg = f"⚠️ *Cambio detectado en {name}:*\n`{old_status}` → `{status}`"
+            # Cambios
+            for name, status in current_status.items():
+                old_status = last_status.get(name)
+                if old_status != status:
+                    msg = (
+                        f"⚠️ *Cambio detectado en {name}:*\n`{old_status}` → `{status}`"
+                    )
+                    await application.bot.send_message(
+                        chat_id=chat_id, text=msg, parse_mode=ParseMode.MARKDOWN
+                    )
+
+            # Eliminados
+            for name in set(last_status) - set(current_status):
                 await application.bot.send_message(
-                    chat_id=chat_id, text=msg, parse_mode=ParseMode.MARKDOWN
+                    chat_id=chat_id,
+                    text=f"🛑 *Proceso eliminado:* `{name}`",
+                    parse_mode=ParseMode.MARKDOWN,
                 )
 
-        # Procesos eliminados
-        for name in set(last_status) - set(current_status):
-            await application.bot.send_message(
-                chat_id=chat_id,
-                text=f"🛑 *Proceso eliminado:* `{name}`",
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            # Nuevos
+            for name in set(current_status) - set(last_status):
+                await application.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"🟢 *Nuevo proceso detectado:* `{name}`",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
 
-        # Procesos nuevos
-        for name in set(current_status) - set(last_status):
-            await application.bot.send_message(
-                chat_id=chat_id,
-                text=f"🟢 *Nuevo proceso detectado:* `{name}`",
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            last_status = current_status.copy()
 
-        last_status = current_status.copy()
+    except asyncio.CancelledError:
+        print("🧹 Monitor PM2 detenido correctamente.")
 
 
 # --- CALLBACK AL INICIAR EL BOT ---
 async def on_startup(application):
-    application.create_task(monitor_pm2(application))
+    """Se ejecuta cuando el bot inicia completamente."""
+    await asyncio.sleep(1)  # Espera a que el bot esté listo
+    asyncio.create_task(monitor_pm2(application))
     print("✅ Tarea de monitoreo PM2 iniciada.")
 
 
@@ -225,16 +260,22 @@ async def on_startup(application):
 def main():
     app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
 
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("about", about))
+    app.add_handler(CommandHandler("system", system))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("restart", restart))
     app.add_handler(CommandHandler("logs", logs))
     app.add_handler(CommandHandler("help", help_cmd))
 
     print("✅ Bot admin corriendo. Esperando comandos...")
-    app.run_polling(
-        allowed_updates=list(constants.UpdateType),
-        drop_pending_updates=True,
-    )
+    try:
+        app.run_polling(
+            allowed_updates=list(constants.UpdateType),
+            drop_pending_updates=True,
+        )
+    except KeyboardInterrupt:
+        print("\n🧹 Bot detenido manualmente.")
 
 
 if __name__ == "__main__":
