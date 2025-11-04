@@ -56,7 +56,7 @@ def restricted(func):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = run_cmd("pm2 list")
     await update.message.reply_text(
-        f"📊 *PM2 STATUS:*\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
+        f"📊 *PM2 STATUS:*\n``````", parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -68,7 +68,7 @@ async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.args[0]
     result = run_cmd(f"pm2 restart {name}")
     await update.message.reply_text(
-        f"🔁 *Reinicio de {name}:*\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
+        f"🔁 *Reinicio de {name}:*\n``````", parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -81,7 +81,7 @@ async def logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = context.args[1] if len(context.args) > 1 else "30"
     result = run_cmd(f"pm2 logs {name} --lines {lines} --nostream")
     await update.message.reply_text(
-        f"📜 *Logs de {name}:*\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
+        f"📜 *Logs de {name}:*\n``````", parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -97,7 +97,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- ALERTAS AUTOMÁTICAS ---
 async def monitor_pm2(application):
-    """Chequea el estado de PM2 cada minuto y avisa cambios."""
+    """Chequea el estado de PM2 cada intervalo y avisa cambios."""
     chat_id = ALLOWED_USERS[0]
     last_status = get_pm2_status()
 
@@ -134,8 +134,7 @@ async def monitor_pm2(application):
 
 
 # --- MAIN ---
-async def main():
-    # ... (cuerpo de la función main_async renombrado a main)
+def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("status", status))
@@ -143,19 +142,15 @@ async def main():
     app.add_handler(CommandHandler("logs", logs))
     app.add_handler(CommandHandler("help", help_cmd))
 
-    # El monitor se inicia como una tarea del event loop principal
-    # que está a punto de ejecutarse con app.run_polling()
-    asyncio.create_task(monitor_pm2(app))
+    # El monitor se inicia como tarea dentro del event loop controlado por run_polling()
+    app.create_task(monitor_pm2(app))
 
     print("✅ Bot admin corriendo. Esperando comandos...")
-    # run_polling() gestionará el event loop de forma correcta
-    await app.run_polling(
+    app.run_polling(
         allowed_updates=list(constants.UpdateType), drop_pending_updates=True
     )
 
 
 # Bloque de ejecución principal
 if __name__ == "__main__":
-    # asyncio.run() se encarga de iniciar y cerrar el event loop
-    # y ejecutar la corrutina 'main' hasta que termine.
-    asyncio.run(main())
+    main()
