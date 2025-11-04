@@ -60,52 +60,71 @@ def restricted(func):
 
 # --- COMANDOS DE ADMINISTRACIÓN ---
 @restricted
+# --- COMANDOS (MODIFICACIÓN DE STATUS) ---
+@restricted
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 1. Obtenemos la salida en formato JSON
-    json_result = await run_cmd("pm2 list --json")
-
-    try:
-        data = json.loads(json_result)
-    except json.JSONDecodeError:
-        # Esto ocurre si pm2 list --json falla (ej. pm2 no está instalado o no hay procesos)
-        await update.message.reply_text(
-            f"❌ *Error al obtener el estado de PM2:*\n```\n{json_result}\n```",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
+    # 1. Obtenemos el diccionario (JSON ya cargado) usando get_pm2_status
+    data = await get_pm2_status()
 
     # 2. Construimos la tabla
     lines = ["📊 *PM2 STATUS:*"]
 
     if not data:
-        lines.append("No hay procesos PM2 activos.")
+        # Si get_pm2_status retorna un diccionario vacío {}
+        lines.append("No hay procesos PM2 activos o PM2 no está disponible.")
     else:
         # Encabezado
         lines.append("```")
         lines.append(" ID | Nombre      | CPU  | MEMORIA | Status")
         lines.append("----+-------------+------+---------+---------")
 
-        for p in data:
-            name = p["name"][:11].ljust(11)  # Limita y rellena el nombre
-            pm_id = str(p["pm_id"]).ljust(2)
-            cpu = str(p["monit"]["cpu"]).rjust(3) + "%"
-            memory = round(p["monit"]["memory"] / (1024 * 1024), 1)  # MB
+        # Procesamos cada proceso
+        for name, status_text in data.items():
+            # Dado que get_pm2_status solo devuelve nombre y status, necesitamos PM2 JLIST completo
+            # para CPU y Memoria. Vamos a obtenerlo de nuevo, de forma más segura.
 
-            # Formato del estado con emojis
-            status_text = p["pm2_env"]["status"]
-            if status_text == "online":
-                status_emoji = "🟢"
-            elif status_text == "stopped":
-                status_emoji = "🛑"
-            elif status_text == "errored":
-                status_emoji = "🔴"
-            else:
-                status_emoji = "🟡"
+            # --- Mejoramos la obtención de datos completos para un mejor formato ---
+            full_json_result = await run_cmd("pm2 jlist")
 
-            status_line = f"{pm_id} | {name} | {cpu} | {str(memory).rjust(5)}M | {status_emoji} {status_text}"
-            lines.append(status_line)
+            try:
+                full_data = json.loads(full_json_result)
+            except json.JSONDecodeError:
+                # Si falla, usamos la salida de pm2 list sin formato (como alternativa)
+                list_result = await run_cmd("pm2 list")
+                await update.message.reply_text(
+                    f"📊 *PM2 STATUS (Formato básico):*\n```\n{list_result}\n```",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                return
 
-        lines.append("```")
+            # Si full_data es correcto, iteramos sobre él para obtener todos los detalles
+            for p in full_data:
+                name = p["name"][:11].ljust(11)  # Limita y rellena el nombre
+                pm_id = str(p["pm_id"]).ljust(2)
+
+                # Datos de monitoreo:
+                cpu = str(p["monit"].get("cpu", 0)).rjust(3) + "%"
+                # Convertir Bytes a MB
+                memory_bytes = p["monit"].get("memory", 0)
+                memory = round(memory_bytes / (1024 * 1024), 1)
+
+                status_text = p["pm2_env"]["status"]
+
+                # Formato del estado con emojis
+                if status_text == "online":
+                    status_emoji = "🟢"
+                elif status_text == "stopped":
+                    status_emoji = "🛑"
+                elif status_text == "errored":
+                    status_emoji = "🔴"
+                else:
+                    status_emoji = "🟡"
+
+                status_line = f"{pm_id} | {name} | {cpu} | {str(memory).rjust(5)}M | {status_emoji} {status_text}"
+                lines.append(status_line)
+
+            lines.append("```")
+            break  # Terminamos el bucle si ya procesamos la data
 
     final_message = "\n".join(lines)
 
