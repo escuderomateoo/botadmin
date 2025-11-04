@@ -4,6 +4,7 @@ import json
 import os
 from dotenv import load_dotenv
 from telegram import Update, constants
+from telegram.constants import ParseMode
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # --- CONFIGURACIÓN ---
@@ -55,7 +56,7 @@ def restricted(func):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = run_cmd("pm2 list")
     await update.message.reply_text(
-        f"📊 PM2 STATUS:\n\n{result}\n", parse_mode=constants.ParseMode.MARKDOWN
+        f"📊 *PM2 STATUS:*\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -67,7 +68,7 @@ async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.args[0]
     result = run_cmd(f"pm2 restart {name}")
     await update.message.reply_text(
-        f"🔁 Reinicio de {name}:\n\n{result}\n", parse_mode=constants.ParseMode.MARKDOWN
+        f"🔁 *Reinicio de {name}:*\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -80,23 +81,23 @@ async def logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = context.args[1] if len(context.args) > 1 else "30"
     result = run_cmd(f"pm2 logs {name} --lines {lines} --nostream")
     await update.message.reply_text(
-        f"📜 Logs de {name}:\n\n{result}\n", parse_mode=constants.ParseMode.MARKDOWN
+        f"📜 *Logs de {name}:*\n```\n{result}\n```", parse_mode=ParseMode.MARKDOWN
     )
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "🤖 *Comandos disponibles:*\n"
+        "🤖 *Comandos disponibles:*\n\n"
         "/status - Ver procesos PM2\n"
         "/restart <nombre> - Reiniciar proceso\n"
         "/logs <nombre> [lineas] - Ver logs\n"
     )
-    await update.message.reply_text(text, parse_mode=constants.ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 
 # --- ALERTAS AUTOMÁTICAS ---
 async def monitor_pm2(application):
-    """Chequea el estado de PM2 cada cierto tiempo y avisa cambios."""
+    """Chequea el estado de PM2 cada minuto y avisa cambios."""
     chat_id = ALLOWED_USERS[0]
     last_status = get_pm2_status()
 
@@ -104,33 +105,36 @@ async def monitor_pm2(application):
         await asyncio.sleep(CHECK_INTERVAL)
         current_status = get_pm2_status()
 
+        # Cambios de estado
         for name, status in current_status.items():
             old_status = last_status.get(name)
             if old_status != status:
                 msg = f"⚠️ *Cambio detectado en {name}:*\n`{old_status}` → `{status}`"
                 await application.bot.send_message(
-                    chat_id=chat_id, text=msg, parse_mode=constants.ParseMode.MARKDOWN
+                    chat_id=chat_id, text=msg, parse_mode=ParseMode.MARKDOWN
                 )
 
+        # Procesos eliminados
         for name in set(last_status) - set(current_status):
             await application.bot.send_message(
                 chat_id=chat_id,
                 text=f"🛑 *Proceso eliminado:* `{name}`",
-                parse_mode=constants.ParseMode.MARKDOWN,
+                parse_mode=ParseMode.MARKDOWN,
             )
 
+        # Procesos nuevos
         for name in set(current_status) - set(last_status):
             await application.bot.send_message(
                 chat_id=chat_id,
                 text=f"🟢 *Nuevo proceso detectado:* `{name}`",
-                parse_mode=constants.ParseMode.MARKDOWN,
+                parse_mode=ParseMode.MARKDOWN,
             )
 
         last_status = current_status.copy()
 
 
 # --- MAIN ---
-def main():
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("status", status))
@@ -140,8 +144,9 @@ def main():
 
     asyncio.create_task(monitor_pm2(app))
 
-    app.run_polling()
+    print("✅ Bot admin corriendo. Esperando comandos...")
+    await app.run_polling()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
