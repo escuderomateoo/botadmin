@@ -3,8 +3,6 @@
     Bot de Telegram en Python para administrar procesos PM2 en un servidor Linux.  
     Permite ver estado de procesos, reiniciarlos, ver logs, monitorear el sistema y manejar otro bot/app que corre bajo PM2 (por ejemplo, tu bot principal).
 
----
-
 ## 🚀 Características
 
     - Ver el estado de todos los procesos administrados por PM2 (`pm2 jlist` formateado en tabla).
@@ -16,8 +14,6 @@
     - Monitoreo automático de PM2: avisa por Telegram si un proceso cambia de estado, se elimina o aparece uno nuevo.
     - Acceso restringido por ID de usuario de Telegram.
 
----
-
 ## 🧩 Arquitectura resumida
 
 *Telegram ⇄ PM2 Admin Bot (este repo) ⇄ PM2 ⇄ Otros procesos/bots*
@@ -25,8 +21,6 @@
     - Telegram habla con este bot usando la Bot API.
     - Este bot ejecuta comandos de consola (`pm2 ...`) en el servidor.
     - PM2 administra los otros procesos (por ejemplo, tu bot principal “BanksRate”, APIs, etc.).
-
----
 
 ## 📦 Requisitos
 
@@ -37,11 +31,9 @@
     - ID de usuario(s) de Telegram autorizados
     - Acceso al servidor donde corre PM2 (Linux recomendado)
 
-*Dependencias Python (ejemplo):*
+    *Dependencias Python (ejemplo):*
 
     pip install python-telegram-bot==21.0 psutil python-dotenv
-
----
 
 ## ⚙️ Configuración
 
@@ -53,14 +45,11 @@
 
 *Ese token se usará en el archivo `.env`.*
 
----
 
 ### 2. Obtener tu ID de usuario de Telegram
 
     Puedes usar un bot como `@userinfobot` para obtener tu `user_id`.  
     Ese número se usará en `ALLOWED_USERS` para limitar quién puede usar el bot.
-
----
 
 ### 3. Archivo `.env`
 
@@ -74,8 +63,6 @@
     - `ALLOWED_USERS`: IDs de usuarios autorizados, separados por coma.
     - `CHECK_INTERVAL`: cada cuántos segundos el bot revisa el estado de PM2 para el monitoreo automático.
 
----
-
 ### 4. Ruta del repositorio para `/gitpull`
 
 *En el código se usa por defecto:*
@@ -84,7 +71,6 @@
 
 *Modifica esa ruta si tu repositorio está en otro directorio.*
 
----
 
 ## ▶️ Puesta en marcha
 
@@ -107,7 +93,6 @@
 
 ## > Asegúrate de que PM2 esté instalado y configurado en el servidor antes de usar los comandos relacionados a PM2.
 
----
 
 ## 🔐 Control de acceso
 
@@ -124,11 +109,9 @@
     return wrapper
 
 
-
 *Todos los comandos sensibles están decorados con `@restricted`.*
 *Si el `user_id` no está en `ALLOWED_USERS`, el bot no ejecuta nada peligroso.*
 
----
 
 ## 🧠 Cómo funciona internamente
 
