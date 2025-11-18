@@ -1,0 +1,17 @@
+# PM2 Admin Bot
+
+Bot de Telegram en Python para administrar procesos PM2 en un servidor Linux.  
+Permite ver estado de procesos, reiniciarlos, ver logs, monitorear el sistema y manejar otro bot/app que corre bajo PM2 (por ejemplo, tu bot principal).
+
+## 🚀 Características
+
+- Ver el estado de todos los procesos administrados por PM2 (`pm2 jlist` formateado en tabla).
+- Reiniciar procesos específicos por nombre (`pm2 restart <nombre>`).
+- Ver logs recientes de un proceso (`pm2 logs <nombre> --lines N --nostream`).
+- Ver información del sistema (CPU, RAM, disco, uptime).
+- Ejecutar `git pull` en un repositorio del servidor.
+- Iniciar y detener un proceso llamado `bot` que corre bajo PM2.
+- Monitoreo automático de PM2: avisa por Telegram si un proceso cambia de estado, se elimina o aparece uno nuevo.
+- Acceso restringido por ID de usuario de Telegram.
+
+## 🧩 Arquitectura resumida
