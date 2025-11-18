@@ -1,16 +1,323 @@
-##PM2 Admin Bot
-*Bot de Telegram en Python para administrar procesos PM2 en un servidor Linux.  
-  Permite ver estado de procesos, reiniciarlos, ver logs, monitorear el sistema y manejar otro bot/app que corre bajo PM2 (por ejemplo, tu bot principal).
+# PM2 Admin Bot
+
+    Bot de Telegram en Python para administrar procesos PM2 en un servidor Linux.  
+    Permite ver estado de procesos, reiniciarlos, ver logs, monitorear el sistema y manejar otro bot/app que corre bajo PM2 (por ejemplo, tu bot principal).
+
+---
 
 ## 🚀 Características
 
-- Ver el estado de todos los procesos administrados por PM2 (`pm2 jlist` formateado en tabla).
-- Reiniciar procesos específicos por nombre (`pm2 restart <nombre>`).
-- Ver logs recientes de un proceso (`pm2 logs <nombre> --lines N --nostream`).
-- Ver información del sistema (CPU, RAM, disco, uptime).
-- Ejecutar `git pull` en un repositorio del servidor.
-- Iniciar y detener un proceso llamado `bot` que corre bajo PM2.
-- Monitoreo automático de PM2: avisa por Telegram si un proceso cambia de estado, se elimina o aparece uno nuevo.
-- Acceso restringido por ID de usuario de Telegram.
+    - Ver el estado de todos los procesos administrados por PM2 (`pm2 jlist` formateado en tabla).
+    - Reiniciar procesos específicos por nombre (`pm2 restart <nombre>`).
+    - Ver logs recientes de un proceso (`pm2 logs <nombre> --lines N --nostream`).
+    - Ver información del sistema (CPU, RAM, disco, uptime).
+    - Ejecutar `git pull` en un repositorio del servidor.
+    - Iniciar y detener un proceso llamado `bot` que corre bajo PM2.
+    - Monitoreo automático de PM2: avisa por Telegram si un proceso cambia de estado, se elimina o aparece uno nuevo.
+    - Acceso restringido por ID de usuario de Telegram.
+
+---
 
 ## 🧩 Arquitectura resumida
+
+*Telegram ⇄ PM2 Admin Bot (este repo) ⇄ PM2 ⇄ Otros procesos/bots*
+
+    - Telegram habla con este bot usando la Bot API.
+    - Este bot ejecuta comandos de consola (`pm2 ...`) en el servidor.
+    - PM2 administra los otros procesos (por ejemplo, tu bot principal “BanksRate”, APIs, etc.).
+
+---
+
+## 📦 Requisitos
+
+    - Python 3.10+
+    - PM2 instalado en el servidor
+    - Una cuenta de Telegram y un bot creado con BotFather
+    - Token del bot de Telegram
+    - ID de usuario(s) de Telegram autorizados
+    - Acceso al servidor donde corre PM2 (Linux recomendado)
+
+*Dependencias Python (ejemplo):*
+
+    pip install python-telegram-bot==21.0 psutil python-dotenv
+
+---
+
+## ⚙️ Configuración
+
+### 1. Crear el bot en Telegram
+
+    1. Abre Telegram y habla con `@BotFather`.
+    2. Usa `/newbot` y sigue las instrucciones.
+    3. Copia el **token** que te entrega BotFather.
+
+*Ese token se usará en el archivo `.env`.*
+
+---
+
+### 2. Obtener tu ID de usuario de Telegram
+
+    Puedes usar un bot como `@userinfobot` para obtener tu `user_id`.  
+    Ese número se usará en `ALLOWED_USERS` para limitar quién puede usar el bot.
+
+---
+
+### 3. Archivo `.env`
+
+*En la raíz del proyecto crea un archivo `.env`:*
+
+    BOT_TOKEN=TU_TOKEN_DE_BOT_AQUI
+    ALLOWED_USERS=123456789,987654321
+    CHECK_INTERVAL=60
+
+    - `BOT_TOKEN`: token que te dio BotFather.
+    - `ALLOWED_USERS`: IDs de usuarios autorizados, separados por coma.
+    - `CHECK_INTERVAL`: cada cuántos segundos el bot revisa el estado de PM2 para el monitoreo automático.
+
+---
+
+### 4. Ruta del repositorio para `/gitpull`
+
+*En el código se usa por defecto:*
+
+    repo_path = "/root/proyectofinalsic/"
+
+*Modifica esa ruta si tu repositorio está en otro directorio.*
+
+---
+
+## ▶️ Puesta en marcha
+
+    git clone <URL_DE_TU_REPO>
+    cd <CARPETA_DEL_REPO>
+
+*Crear y llenar el .env*
+
+    cp .env.example .env # si tienes un ejemplo, sino crea .env a mano
+
+## Edita .env con tu TOKEN y ALLOWED_USERS
+
+*Instalar dependencias*
+
+    pip install -r requirements.txt # o el comando de arriba
+
+*Ejecutar el bot*
+
+    python main.py
+
+## > Asegúrate de que PM2 esté instalado y configurado en el servidor antes de usar los comandos relacionados a PM2.
+
+---
+
+## 🔐 Control de acceso
+
+*Se usa un decorador `@restricted` para permitir solo a ciertos usuarios:*
+
+    def restricted(func):
+    async def wrapper(update, context):
+    user_id = update.effective_user.id
+    if user_id not in ALLOWED_USERS:
+    if update.message:
+    await update.message.reply_text("🚫 No estás autorizado para usar este bot.")
+    return
+    return await func(update, context)
+    return wrapper
+
+
+
+*Todos los comandos sensibles están decorados con `@restricted`.*
+*Si el `user_id` no está en `ALLOWED_USERS`, el bot no ejecuta nada peligroso.*
+
+---
+
+## 🧠 Cómo funciona internamente
+
+### Conexión con Telegram
+
+*En el `main()` se construye la aplicación del bot:*
+
+    app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("about", about))
+    app.add_handler(CommandHandler("system", system))
+    app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("restart", restart))
+    app.add_handler(CommandHandler("logs", logs))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("gitpull", git_pull_repo))
+    app.add_handler(CommandHandler("startbot", start_bot))
+    app.add_handler(CommandHandler("stopbot", stop_bot))
+
+    app.run_polling(
+    allowed_updates=list(constants.UpdateType),
+    drop_pending_updates=True,
+    )
+
+*- `run_polling` mantiene el bot escuchando nuevos mensajes.*
+*- Cada comando `/algo` dispara la función asociada (`status`, `restart`, etc.).*
+
+
+
+### Conexión con PM2
+
+*El bot ejecuta comandos de consola usando `subprocess`:*
+
+    def run_cmd_sync(cmd: str) -> str:
+    output = subprocess.check_output(
+    cmd, shell=True, stderr=subprocess.STDOUT, text=True
+    )
+    return output.strip()
+
+    async def run_cmd(cmd: str) -> str:
+    return await asyncio.to_thread(run_cmd_sync, cmd)
+
+*- `run_cmd_sync` ejecuta el comando real (`pm2 jlist`, `pm2 restart bot`, etc.).*
+*- `run_cmd` lo manda a un hilo para no bloquear el loop asíncrono del bot.*
+
+## Ejemplos:
+
+- **Estado PM2** (`/status`):
+
+          async def get_pm2_status() -> list:
+          output = await run_cmd("pm2 jlist")
+          return json.loads(output)
+
+
+
+- **Reiniciar proceso** (`/restart <nombre>`):
+
+        result = await run_cmd(f"pm2 restart {name}")
+
+- **Logs de proceso** (`/logs <nombre> [lineas]`):
+
+        result = await run_cmd(f"pm2 logs {name} --lines {lines} --nostream")
+
+- **Iniciar / detener “bot”**:
+
+        await run_cmd("sudo pm2 start bot")
+        await run_cmd("sudo pm2 stop bot")
+
+
+
+*El “otro bot/app” (por ejemplo, tu bot principal) está registrado en PM2 con un nombre (`bot`, `banksrate`, etc.), y este admin-bot solo lo maneja indirectamente a través de PM2.*
+
+---
+
+## 🧾 Comandos disponibles
+
+### `/start`
+
+*Mensaje de bienvenida y explicación rápida del bot.*
+
+### `/help`
+
+*Lista de comandos disponibles con una breve descripción.*
+
+### `/about`
+
+*Información del bot: versión, lenguaje, framework, autores, etc.*
+
+### `/system`
+
+*Muestra información general del sistema:*
+
+    - CPU usada (%)
+    - RAM usada
+    - Uso de disco
+    - Uptime del sistema
+
+*Usa `psutil` y `shutil` para obtener estos datos.*
+
+### `/status`
+
+*Muestra el estado de los procesos PM2 en forma de tabla (ID, nombre, CPU, RAM, estado).*
+*Internamente usa `pm2 jlist` y formatea el resultado en Markdown.*
+
+### `/restart <nombre_proceso>`
+
+*Reinicia un proceso de PM2 por nombre.*
+
+Ejemplo:
+
+    /restart bot
+
+### `/logs <nombre_proceso> [lineas]`
+
+*Muestra las últimas `N` líneas de logs de un proceso.*
+
+Ejemplos:
+
+    /logs bot
+    /logs bot 100
+
+*Si la salida es muy larga, se trunca para respetar el límite de caracteres de Telegram.*
+
+### `/gitpull`
+
+*Ejecuta `git pull` en el repositorio configurado (`repo_path`) y devuelve la salida.*
+
+### `/startbot`
+
+*Inicia el proceso `bot` dentro de PM2:*
+
+    sudo pm2 start bot
+
+### `/stopbot`
+
+*Detiene el proceso `bot` dentro de PM2:*
+
+    sudo pm2 stop bot
+
+---
+
+## 👀 Monitoreo automático de PM2
+
+*Al arrancar la app se ejecuta una tarea de monitoreo:*
+
+    async def on_startup(application):
+    await asyncio.sleep(1)
+    asyncio.create_task(monitor_pm2(application))
+
+*`monitor_pm2`:*
+
+    - Lee el estado actual de los procesos con `pm2 jlist`.
+    - Cada `CHECK_INTERVAL` segundos vuelve a leer el estado.
+    - Compara el estado anterior con el nuevo:
+      - Si un proceso cambia de estado (por ejemplo, de `online` a `errored`), manda una alerta.
+      - Si un proceso desaparece, envía “Proceso eliminado”.
+      - Si aparece un proceso nuevo, envía “Nuevo proceso detectado”.
+    - Envía las notificaciones al primer usuario de `ALLOWED_USERS`.
+
+## De esta forma puedes dejar el bot corriendo y recibir avisos cuando algo raro pasa en tus procesos de PM2.
+
+---
+
+## ⚠️ Notas de seguridad
+
+    - Solo agrega a `ALLOWED_USERS` IDs de personas de confianza.
+    - Los comandos usan `shell=True` y algunos usan `sudo`, así que **no** abras este bot a usuarios desconocidos.
+    - Revisa tu configuración de `sudoers` para permitir o restringir `pm2 start/stop` sin contraseña según tus necesidades.
+
+---
+
+## 🧑‍💻 Autores
+
+- *Escudero Mateo*  
+- *Agustín Stella*  
+- *Damián Melgarejo*  
+
+---
+
+## 📄 Licencia
+
+    (Agrega aquí el tipo de licencia que quieras usar, por ejemplo MIT, GPL, etc.)
+
+    MIT License
+...
+
+    text
+
+---
+
+## > Sugerencia: copia este contenido en un archivo llamado `README.md` en la raíz del repo y ajusta nombres, rutas y ejemplos según tu entorno (por ejemplo, nombre real del otro bot en PM2, ruta de tu proyecto, etc.).
