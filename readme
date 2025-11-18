@@ -1,5 +1,4 @@
-## PM2 Admin Bot
-
+##PM2 Admin Bot
 *Bot de Telegram en Python para administrar procesos PM2 en un servidor Linux.  
   Permite ver estado de procesos, reiniciarlos, ver logs, monitorear el sistema y manejar otro bot/app que corre bajo PM2 (por ejemplo, tu bot principal).
 
